@@ -1,17 +1,17 @@
 package bcaasc.io.btcdemo.presenter;
 
-import bcaasc.io.btcdemo.bean.BtcUnspentOutputsResponse;
-import bcaasc.io.btcdemo.bean.BtcUtxo;
+import bcaasc.io.btcdemo.bean.Tx;
+import bcaasc.io.btcdemo.bean.TxRef;
 import bcaasc.io.btcdemo.constants.BTCParamsConstants;
-import bcaasc.io.btcdemo.constants.Constants;
 import bcaasc.io.btcdemo.contact.MainContact;
-import bcaasc.io.btcdemo.http.MainInteractor;
+import bcaasc.io.btcdemo.http.MainRequester;
 import bcaasc.io.btcdemo.http.callback.BaseCallback;
 import bcaasc.io.btcdemo.tool.LogTool;
+import com.google.gson.JsonObject;
+import okhttp3.MediaType;
+import okhttp3.RequestBody;
 import org.bitcoinj.core.*;
 import org.bitcoinj.script.Script;
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.spongycastle.util.encoders.Hex;
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -30,9 +30,9 @@ public class MainPresenterImp implements MainContact.Presenter {
 
     private String TAG = MainPresenterImp.class.getSimpleName();
 
-    private MainInteractor interactor = new MainInteractor();
-    private List<BtcUtxo> btcUtxoList;
+    private MainRequester requester = new MainRequester();
     private MainContact.View view;
+    private List<TxRef> btcUTXOList;
 
 
     private String transactionRaw, transactionHash;
@@ -44,32 +44,26 @@ public class MainPresenterImp implements MainContact.Presenter {
 
     @Override
     public void getBalance(String address) {
-        interactor.getBalance(address, new Callback<String>() {
+        requester.getBalance(address, new Callback<bcaasc.io.btcdemo.bean.Address>() {
             @Override
-            public void onResponse(Call<String> call, Response<String> response) {
-                LogTool.d(TAG, response.body());
-                if (response.body() != null) {
-                    try {
-                        JSONObject jsonObject = new JSONObject(response.body());
-                        if (jsonObject.has(address)) {
-                            JSONObject jsonObject1 = jsonObject.getJSONObject(address);
-                            if (jsonObject1.has("final_balance")) {
-                                view.getBalanceSuccess(String.valueOf(new BigDecimal(jsonObject1.getString("final_balance")).multiply(new BigDecimal(BTCParamsConstants.BtcUnitRevert))));
-                            }
+            public void onResponse(Call<bcaasc.io.btcdemo.bean.Address> call, Response<bcaasc.io.btcdemo.bean.Address> response) {
+                bcaasc.io.btcdemo.bean.Address address = response.body();
+                LogTool.d(TAG, address);
+                if (address != null) {
+                    long finalBalance = address.getFinal_balance();
+                    view.getBalanceSuccess(String.valueOf(new BigDecimal(finalBalance).multiply(new BigDecimal(BTCParamsConstants.BtcUnitRevert))));
+                } else {
+                    view.getBalanceFailure("balance 数据为空！");
 
-                        }
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                        LogTool.d(TAG, e.getMessage());
-                    }
                 }
             }
 
             @Override
-            public void onFailure(Call<String> call, Throwable t) {
+            public void onFailure(Call<bcaasc.io.btcdemo.bean.Address> call, Throwable t) {
                 LogTool.e(TAG, t.getMessage());
                 view.getBalanceFailure(t.getMessage());
             }
+
         });
 
     }
@@ -81,7 +75,7 @@ public class MainPresenterImp implements MainContact.Presenter {
      */
     @Override
     public void getTransactionList(String address) {
-        interactor.getTXList(address, new Callback<String>() {
+        requester.getTXList(address, new Callback<String>() {
             @Override
             public void onResponse(Call<String> call, Response<String> response) {
                 LogTool.d(TAG, response.body());
@@ -104,17 +98,25 @@ public class MainPresenterImp implements MainContact.Presenter {
      */
     @Override
     public void getUnspent(String address, String amount, String fee, String addressTo, String privateKey) {
-        interactor.getUnspent(address, new Callback<BtcUnspentOutputsResponse>() {
+        requester.getUnspent(address, new Callback<bcaasc.io.btcdemo.bean.Address>() {
             @Override
-            public void onResponse(Call<BtcUnspentOutputsResponse> call, Response<BtcUnspentOutputsResponse> response) {
-                BtcUnspentOutputsResponse unspentOutputsResponse = response.body();
-                LogTool.d(TAG, response);
+            public void onResponse(Call<bcaasc.io.btcdemo.bean.Address> call, Response<bcaasc.io.btcdemo.bean.Address> response) {
+                bcaasc.io.btcdemo.bean.Address address = response.body();
+                LogTool.d(TAG, address);
 
-                if (unspentOutputsResponse != null) {
-                    btcUtxoList = unspentOutputsResponse.getUnspent_outputs();
+                if (address != null) {
+                    //这是已经确认的交易
+                    btcUTXOList = address.getTxrefs();
+                    if (btcUTXOList == null) {
+                        btcUTXOList = address.getUnconfirmed_txrefs();//这是未经确认的交易
+                    }
+                    if (btcUTXOList == null) {
+                        view.failure("没有UTXO");
+                        return;
+                    }
                     //排序UTXO  从大到小
-                    Collections.sort(btcUtxoList, (unspentOutput, t1) -> Long.compare(t1.getValue(), unspentOutput.getValue()));
-                    view.success(btcUtxoList.toString());
+                    Collections.sort(btcUTXOList, (unspentOutput, t1) -> Long.compare(t1.getValue(), unspentOutput.getValue()));
+                    view.success(btcUTXOList.toString());
                     LogTool.d(TAG, "发送地址：" + address);
                     LogTool.d(TAG, "接受地址：" + addressTo);
                     LogTool.d(TAG, "发送金额：" + amount);
@@ -124,50 +126,53 @@ public class MainPresenterImp implements MainContact.Presenter {
             }
 
             @Override
-            public void onFailure(Call<BtcUnspentOutputsResponse> call, Throwable t) {
+            public void onFailure(Call<bcaasc.io.btcdemo.bean.Address> call, Throwable t) {
                 LogTool.e(TAG, t.getMessage());
                 view.failure(t.getMessage());
 
             }
+
         });
     }
 
     @Override
     public void getTXInfoByHash(String rawHash) {
+        rawHash = "c1035de1e955be89908d4386c79cb5de41e4284dfc853f49477c5a648930c6c1";
         if (rawHash == "" || rawHash == null) {
             rawHash = transactionHash;
         }
-        interactor.getTXInfoByHash(rawHash, new BaseCallback<bcaasc.io.btcdemo.bean.Transaction>() {
+        requester.getTXInfoByHash(rawHash, new BaseCallback<Tx>() {
 
-            @Override
-            public void onFailure(Call<bcaasc.io.btcdemo.bean.Transaction> call, Throwable t) {
-                view.failure(t.getMessage());
-            }
+                    @Override
+                    public void httpException() {
+                        super.httpException();
+                        view.failure("Transaction not found");
+                    }
 
-            @Override
-            public void onSuccess(Response<bcaasc.io.btcdemo.bean.Transaction> response) {
-                bcaasc.io.btcdemo.bean.Transaction transaction = response.body();
-                view.success(String.valueOf(transaction));
-                if (transaction != null) {
-                    long blockHeight = transaction.getBlock_height();
-                    view.hashStatus(String.valueOf(blockHeight));
+                    @Override
+                    public void onSuccess(Response<Tx> response) {
+                        LogTool.d(TAG, response.body());
+                        Tx tx = response.body();
+                        if (tx != null) {
+                            view.success("当前区块的高度为：" + tx.getBlock_height());
+
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<Tx> call, Throwable t) {
+                        t.printStackTrace();
+                        LogTool.e(TAG, t.getMessage());
+                        view.failure(t.getMessage());
+                    }
+
+                    @Override
+                    public void onNotFound() {
+                        super.onNotFound();
+                        view.failure("not found");
+                    }
                 }
-            }
-
-            @Override
-            public void onNotFound() {
-                super.onNotFound();
-                view.failure("not found");
-
-            }
-
-            @Override
-            public void httpException() {
-                super.httpException();
-                view.failure("Transaction not found");
-
-            }
-        });
+        );
     }
 
     /**
@@ -183,7 +188,7 @@ public class MainPresenterImp implements MainContact.Presenter {
     @Override
     public void pushTX(String feeString, String toAddress, String amountString, String addressPrivateKey) {
         //判断当前是否有UTXO事务
-        if (btcUtxoList == null) {
+        if (btcUTXOList == null) {
             return;
         }
         //You must construct a Context object before using BitCoin j!
@@ -219,10 +224,10 @@ public class MainPresenterImp implements MainContact.Presenter {
         //将当前交易的金额+手续费
         amount = amount.add(fee);
         //重新声明一个UTXO数组
-        List<BtcUtxo> btcUnspentOutputList = new ArrayList<>();
+        List<TxRef> btcUnspentOutputList = new ArrayList<>();
         //遍历UTXO，得到当前地址的所有UTXO事务
-        for (int i = 0; i < btcUtxoList.size(); i++) {
-            BtcUtxo unspentOutput = btcUtxoList.get(i);
+        for (int i = 0; i < btcUTXOList.size(); i++) {
+            TxRef unspentOutput = btcUTXOList.get(i);
             //添加当前的UTXO里面的value
             walletBtc = walletBtc.add(new BigDecimal(unspentOutput.getValue()));
             //将当前数据新添加入新定义的UTXO数组里面
@@ -251,10 +256,10 @@ public class MainPresenterImp implements MainContact.Presenter {
         LogTool.d(TAG, "goBackBtc = " + goBackBtc);
         LogTool.d(TAG, "unspentOutputs.size :" + btcUnspentOutputList.size() + ";unspentOutputs: " + btcUnspentOutputList);
         //对重新组装的UTXO进行遍历,进行交易签章
-        for (BtcUtxo unspentOutput : btcUnspentOutputList) {
+        for (TxRef unspentOutput : btcUnspentOutputList) {
             if (unspentOutput.getValue() != 0.0) {
                 // 获取交易输入TXId对应的交易数据
-                Sha256Hash sha256Hash = new Sha256Hash(Utils.parseAsHexOrBase58(unspentOutput.getTx_hash_big_endian()));
+                Sha256Hash sha256Hash = new Sha256Hash(Utils.parseAsHexOrBase58(unspentOutput.getTx_hash()));
                 // 获取交易输入所对应的上一笔交易中的交易输出
                 TransactionOutPoint outPoint = new TransactionOutPoint(BTCParamsConstants.getNetworkParameter(),
                         unspentOutput.getTx_output_n(), sha256Hash);
@@ -262,7 +267,7 @@ public class MainPresenterImp implements MainContact.Presenter {
                 Script script = new Script(Utils.parseAsHexOrBase58(unspentOutput.getScript()));
                 LogTool.d(TAG, "script:" + unspentOutput.getScript());
                 LogTool.d(TAG, "script2:" + script);
-                LogTool.d(TAG, "addSignedInput getTxid:" + unspentOutput.getTx_hash_big_endian());
+                LogTool.d(TAG, "addSignedInput getTxid:" + unspentOutput.getTx_hash());
                 LogTool.d(TAG, "addSignedInput getSatoshis:" + unspentOutput.getValue());
                 //添加「交易」信息
                 transaction.addSignedInput(outPoint, script, ecKey, Transaction.SigHash.ALL, true);
@@ -286,8 +291,9 @@ public class MainPresenterImp implements MainContact.Presenter {
      * 广播交易
      */
     private void pushTX() {
-
-        interactor.pushTX(transactionRaw, new Callback<String>() {
+        JsonObject jsonObject = new JsonObject();
+        jsonObject.addProperty("tx", transactionRaw);
+        requester.pushTX(RequestBody.create(MediaType.parse("application/json"), jsonObject.toString()), new Callback<String>() {
             @Override
             public void onResponse(Call<String> call, Response<String> response) {
                 //Transaction Submitted

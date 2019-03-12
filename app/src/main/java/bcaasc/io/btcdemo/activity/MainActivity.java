@@ -298,8 +298,6 @@ public class MainActivity extends AppCompatActivity implements MainContact.View 
                     break;
                 case REQUEST_CODE_SCAN_PRIVATE_KEY_OK:
                     this.privateKey = result;
-                    LogTool.d(TAG,BTCParamsConstants.isTest);
-                    LogTool.d(TAG,BTCParamsConstants.getNetworkParameter());
                     try {
                         // 根据私鑰WIF字串轉ECKey
                         ECKey ecKey = DumpedPrivateKey.fromBase58(BTCParamsConstants.getNetworkParameter(), privateKey).getKey();
@@ -313,6 +311,7 @@ public class MainActivity extends AppCompatActivity implements MainContact.View 
                         if (e instanceof WrongNetworkException) {
                             tvContent.setText("网络环境与地址信息不匹配，请核对。");
                         }
+                        e.printStackTrace();
                     }
                     break;
             }

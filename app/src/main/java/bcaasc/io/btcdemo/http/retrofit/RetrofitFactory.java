@@ -33,9 +33,9 @@ public class RetrofitFactory {
     }
 
     //测试
-    private static String testBaseUrl = "https://testnet.blockchain.info";
+    private static String testBaseUrl = "https://api.blockcypher.com/v1/btc/test3/";
     //正式
-    private static String baseUrl = "https://blockchain.info";
+    private static String baseUrl = "https://api.blockcypher.com/v1/btc/main/";
 
     /**
      * AN api
