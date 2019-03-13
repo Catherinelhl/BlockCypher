@@ -2,16 +2,20 @@ package bcaasc.io.btcdemo.presenter;
 
 import bcaasc.io.btcdemo.bean.Tx;
 import bcaasc.io.btcdemo.bean.TxRef;
+import bcaasc.io.btcdemo.bean.TxSkeleton;
 import bcaasc.io.btcdemo.constants.BTCParamsConstants;
 import bcaasc.io.btcdemo.contact.MainContact;
 import bcaasc.io.btcdemo.http.MainRequester;
 import bcaasc.io.btcdemo.http.callback.BaseCallback;
 import bcaasc.io.btcdemo.tool.LogTool;
+import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import okhttp3.MediaType;
 import okhttp3.RequestBody;
 import org.bitcoinj.core.*;
+import org.bitcoinj.crypto.TransactionSignature;
 import org.bitcoinj.script.Script;
+import org.bitcoinj.script.ScriptBuilder;
 import org.spongycastle.util.encoders.Hex;
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -32,10 +36,9 @@ public class MainPresenterImp implements MainContact.Presenter {
 
     private MainRequester requester = new MainRequester();
     private MainContact.View view;
-    private List<TxRef> btcUTXOList;
 
 
-    private String transactionRaw, transactionHash;
+    private String transactionHash;
 
 
     public MainPresenterImp(MainContact.View view) {
@@ -106,22 +109,23 @@ public class MainPresenterImp implements MainContact.Presenter {
 
                 if (address != null) {
                     //这是已经确认的交易
-                    btcUTXOList = address.getTxrefs();
+                    List<TxRef> btcUTXOList = address.getTxrefs();
                     if (btcUTXOList == null) {
-                        btcUTXOList = address.getUnconfirmed_txrefs();//这是未经确认的交易
+                        //这是未经确认的交易
+                        btcUTXOList = address.getUnconfirmed_txrefs();
                     }
                     if (btcUTXOList == null) {
                         view.failure("没有UTXO");
                         return;
                     }
-                    //排序UTXO  从大到小
+                    //排序UTXO ，这样减少使用的UTXO，从大到小
                     Collections.sort(btcUTXOList, (unspentOutput, t1) -> Long.compare(t1.getValue(), unspentOutput.getValue()));
                     view.success(btcUTXOList.toString());
                     LogTool.d(TAG, "发送地址：" + address);
                     LogTool.d(TAG, "接受地址：" + addressTo);
                     LogTool.d(TAG, "发送金额：" + amount);
                     LogTool.d(TAG, "发送手续费：" + fee);
-                    pushTX(fee, addressTo, amount, privateKey);
+                    getTransactionByUTXO(fee, addressTo, amount, privateKey, btcUTXOList);
                 }
             }
 
@@ -137,7 +141,7 @@ public class MainPresenterImp implements MainContact.Presenter {
 
     @Override
     public void getTXInfoByHash(String rawHash) {
-        rawHash = "c1035de1e955be89908d4386c79cb5de41e4284dfc853f49477c5a648930c6c1";
+//        rawHash = "c1035de1e955be89908d4386c79cb5de41e4284dfc853f49477c5a648930c6c1";
         if (rawHash == "" || rawHash == null) {
             rawHash = transactionHash;
         }
@@ -176,7 +180,7 @@ public class MainPresenterImp implements MainContact.Presenter {
     }
 
     /**
-     * 转账BTC方法
+     * 通过获取到的UTXO数据，组装Transaction
      *
      * @param feeString    手续费
      * @param toAddress    收款地址
@@ -185,8 +189,7 @@ public class MainPresenterImp implements MainContact.Presenter {
      *                     0.00001
      * @return
      */
-    @Override
-    public void pushTX(String feeString, String toAddress, String amountString, String addressPrivateKey) {
+    public void getTransactionByUTXO(String feeString, String toAddress, String amountString, String addressPrivateKey, List<TxRef> btcUTXOList) {
         //判断当前是否有UTXO事务
         if (btcUTXOList == null) {
             return;
@@ -279,21 +282,24 @@ public class MainPresenterImp implements MainContact.Presenter {
         LogTool.d(TAG, "transaction is:" + transaction);
         byte[] bytes = transaction.unsafeBitcoinSerialize();
         LogTool.d(TAG, "Transaction size = " + bytes.length);
-        transactionRaw = Hex.toHexString(bytes);
+        String transactionRaw = Hex.toHexString(bytes);
         LogTool.d(TAG, "transactionRaw:" + transactionRaw);
         transactionHash = transaction.getHashAsString();
         view.setHashRaw(transactionHash);
         LogTool.d(TAG, "transactionHash:" + transactionHash);
-        pushTX();
+        pushTX(transactionRaw);
     }
 
     /**
      * 广播交易
+     *
+     * @param transactionRaw
      */
-    private void pushTX() {
+    private void pushTX(String transactionRaw) {
         JsonObject jsonObject = new JsonObject();
         jsonObject.addProperty("tx", transactionRaw);
-        requester.pushTX(RequestBody.create(MediaType.parse("application/json"), jsonObject.toString()), new Callback<String>() {
+        RequestBody requestBody = RequestBody.create(MediaType.parse("application/json"), jsonObject.toString());
+        requester.pushTX(requestBody, new Callback<String>() {
             @Override
             public void onResponse(Call<String> call, Response<String> response) {
                 //Transaction Submitted
@@ -341,6 +347,63 @@ public class MainPresenterImp implements MainContact.Presenter {
 //                } else {
 //                    e.onError(new ExceptionHandle.ResponseThrowable(mContext.getString(R.string.failed), TRANSFER_ERROR_FOUR));
 //                }
+            }
+        });
+    }
+
+    @Deprecated
+    @Override
+    public void createNewTxs(String inputAddress, String outputAddress, String amount, String privateKey) {
+//        String tx='{"inputs":[{"addresses": ["CEztKBAYNoUEEaPYbkyFeXC5v8Jz9RoZH9"]}],"outputs":[{"addresses": ["C1rGdt7QEPGiwPMFhNKNhHmyoWpa5X92pn"], "value": 1000000}]}' ;
+        Tx tx = new Tx(inputAddress, outputAddress, amount);
+        Gson gson = new Gson();
+        requester.createNewTX(RequestBody.create(MediaType.parse("application/json"), gson.toJson(tx)), new Callback<TxSkeleton>() {
+            @Override
+            public void onResponse(Call<TxSkeleton> call, Response<TxSkeleton> response) {
+                TxSkeleton txSkeleton = response.body();
+                if (txSkeleton != null) {
+                    LogTool.d(TAG, txSkeleton);
+                    sendTxs(txSkeleton, privateKey);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<TxSkeleton> call, Throwable t) {
+                t.printStackTrace();
+                LogTool.e(TAG, t.getMessage());
+            }
+        });
+
+    }
+
+    @Deprecated
+    @Override
+    public void sendTxs(TxSkeleton txSkeleton, String privateKey) {
+        List<String> publicKey = new ArrayList<>();
+        publicKey.add("04f3f1b8ce790874e6af3a2861ff17d5ca5c1211e027b10abc16b4695bdc8cdabba4174d43d4737ae9e8a562df951712a646899ca1cc576a4e4c80472e4da98065");
+        txSkeleton.setPubkeys(publicKey);
+        List<String> signatures = new ArrayList<>();
+        Script script = new Script(Utils.parseAsHexOrBase58(txSkeleton.getTx().getInputs().get(0).getScript_type()));
+        Sha256Hash hash = new Transaction(BTCParamsConstants.getNetworkParameter()).hashForSignature(0, script, Transaction.SigHash.ALL, true);
+        ECKey sigKey = DumpedPrivateKey.fromBase58(BTCParamsConstants.getNetworkParameter(), privateKey).getKey();
+        ECKey.ECDSASignature ecSig = sigKey.sign(hash);
+        TransactionSignature txSig = new TransactionSignature(ecSig, Transaction.SigHash.ALL, true);
+        String signature = ScriptBuilder.createInputScript(txSig, sigKey).toString();
+        signatures.add(signature);
+        txSkeleton.setSignatures(signatures);
+        requester.sendTX(RequestBody.create(MediaType.parse("application/json"), new Gson().toJson(txSkeleton)), new Callback<TxSkeleton>() {
+            @Override
+            public void onResponse(Call<TxSkeleton> call, Response<TxSkeleton> response) {
+                TxSkeleton txSkeleton = response.body();
+                if (txSkeleton != null) {
+                    LogTool.d(TAG, txSkeleton);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<TxSkeleton> call, Throwable t) {
+                t.printStackTrace();
+                LogTool.e(TAG, t.getMessage());
             }
         });
     }

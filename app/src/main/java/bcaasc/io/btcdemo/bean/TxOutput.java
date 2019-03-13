@@ -16,6 +16,8 @@ package bcaasc.io.btcdemo.bean;
 */
 
 import java.io.Serializable;
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 public class TxOutput implements Serializable {
@@ -26,6 +28,25 @@ public class TxOutput implements Serializable {
     private String spent_by;
     private String data_hex;
     private String data_string;
+
+    public TxOutput(String outputAddress) {
+        super();
+        this.addresses=new ArrayList<>();
+        this.addresses.add(outputAddress);
+    }
+
+    public TxOutput(String outputAddress, int value) {
+        super();
+        this.addresses=new ArrayList<>();
+        this.addresses.add(outputAddress);
+        this.value = value;
+    }
+
+    public TxOutput(List<String> outputAddress) {
+        super();
+        this.addresses=new ArrayList<>();
+        this.addresses.addAll(outputAddress);
+    }
 
     public int getValue() {
         return value;

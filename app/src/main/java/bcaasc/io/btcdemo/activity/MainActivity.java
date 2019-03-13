@@ -165,7 +165,11 @@ public class MainActivity extends AppCompatActivity implements MainContact.View 
                     Toast.makeText(MainActivity.this, "请先输入手续费", Toast.LENGTH_SHORT).show();
                     return;
                 }
+                //First Method:
                 presenter.getUnspent(address, amount, fee, addressTo, privateKey);
+                //Second Method： Deprecated,通过测试还是没有找到签章的关键步骤
+//                presenter.createNewTxs(address, addressTo, amount,privateKey);
+
             }
         });
         tvGetTxStatus.setOnClickListener(new View.OnClickListener() {

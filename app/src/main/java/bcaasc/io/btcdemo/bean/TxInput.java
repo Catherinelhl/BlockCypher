@@ -16,6 +16,7 @@ package bcaasc.io.btcdemo.bean;
 */
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.List;
 
 public class TxInput implements Serializable {
@@ -29,6 +30,18 @@ public class TxInput implements Serializable {
     private int age;
     private String wallet_name;
     private String wallet_token;
+
+    public TxInput(String inputAddress) {
+        super();
+        this.addresses=new ArrayList<>();
+        this.addresses.add(inputAddress);
+    }
+
+    public TxInput(List<String> inputAddress) {
+        super();
+        this.addresses=new ArrayList<>();
+        this.addresses.addAll(inputAddress);
+    }
 
     public String getPrev_hash() {
         return prev_hash;

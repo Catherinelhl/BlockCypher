@@ -15,7 +15,11 @@ package bcaasc.io.btcdemo.bean;
 +--------------+---------------------------------
 */
 
+import bcaasc.io.btcdemo.constants.BTCParamsConstants;
+
 import java.io.Serializable;
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -54,6 +58,15 @@ public class Tx implements Serializable {
     private String hex;
     private String next_inputs;
     private String next_outputs;
+
+    public Tx(String inputAddress, String outputAddress, String amount) {
+        TxInput txInput = new TxInput(inputAddress);
+        TxOutput txOutput = new TxOutput(outputAddress,200000);
+        this.inputs = new ArrayList<>();
+        this.outputs = new ArrayList<>();
+        this.inputs.add(txInput);
+        this.outputs.add(txOutput);
+    }
 
     public int getBlock_height() {
         return block_height;
